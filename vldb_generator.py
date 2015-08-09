@@ -1,4 +1,5 @@
 import sys
+import os
 import binascii
 import struct
 import socket
@@ -7,9 +8,6 @@ import yaml
 vldb_lst_size = 141376
 number_of_servers = 0
 max_servers = 252
-
-uuid = '0076 bb8c 1aa9 158b 98a8 1619 a8c0 aa77'
-ip_addr = '192.168.25.22'
 
 def create_data():
 	vldb_lst = [0] * vldb_lst_size
@@ -23,6 +21,7 @@ def init_ubik_header(vldb_lst):
 	vldb_lst[67] = 0x04
 
 def add_mh_ref(vldb_lst):
+	global number_of_servers
 	n_servers = 0
 	vldb_lst[132181] = vldb_lst[132497] = 0x02
 	vldb_lst[132182] = vldb_lst[132498] = 0x05
@@ -34,8 +33,9 @@ def add_mh_ref(vldb_lst):
 			vldb_lst[105 + n_servers * 4] = hex(i)[2:].zfill(2).decode('hex')
 			vldb_lst[107 + n_servers * 4] = hex(j)[2:].zfill(2).decode('hex')
 			n_servers += 1
-			if n_servers == number_of_servers:
-				vldb_lst[132483] = hex(number_of_servers)[2:].zfill(2).decode('hex')
+			if n_servers == number_of_servers or n_servers == max_servers:
+				number_of_servers = n_servers
+				vldb_lst[132483] = hex(n_servers)[2:].zfill(2).decode('hex')
 				return
 
 def add_uuid(vldb_lst, i, uuid):
@@ -63,6 +63,8 @@ def add_mh_entry(vldb_lst, conf):
 		for key in conf['server_' + str(i + 1)]['addrs']:
 			add_ip_addr(vldb_lst, conf['server_' + str(i + 1)]['addrs'][key], i, j)
 			j += 1
+			if j == 15:
+				break
 
 def add_servers(vldb_lst, conf):
 	add_mh_ref(vldb_lst)
@@ -74,12 +76,14 @@ def save_data(vldb_lst, output):
 		fd.write(bytes)
 
 if __name__ == '__main__':
-	if len(sys.argv) < 2:
-		sys.exit('Usage: python %s <output-path>' % sys.argv[0])
-	with open('input.yaml', 'r') as f:
+	if len(sys.argv) < 3:
+		sys.exit('Usage: python %s <conf-path> <output-path>' % sys.argv[0])
+	if not os.path.exists(sys.argv[1]):
+		sys.exit('ERROR: The configuration file %s was not found!' % sys.argv[1])
+	with open(sys.argv[1], 'r') as f:
 		conf = yaml.load(f)
 	number_of_servers = int(conf['num_server'])
 	vldb_lst = create_data()
 	init_ubik_header(vldb_lst)
 	add_servers(vldb_lst, conf)
-	save_data(vldb_lst, sys.argv[1])
+	save_data(vldb_lst, sys.argv[2])
